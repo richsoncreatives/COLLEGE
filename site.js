@@ -444,9 +444,11 @@
   }
 
   function handleFormSubmission(form, formType) {
+    if (!form || form.dataset.handlerAttached === 'true') return;
+    form.dataset.handlerAttached = 'true';
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-
       const submitBtn = $('button[type="submit"]', form);
       const originalBtnText = submitBtn ? submitBtn.innerHTML : 'Submit';
 
@@ -455,20 +457,31 @@
         submitBtn.innerHTML = 'Sending...';
       }
 
-      showStatus(form, 'loading', '⏳ Sending your details to the CORM team...');
+      showStatus(form, 'loading', '⏳ Sending your message to collegeofrelationship@gmail.com...');
 
       const formData = new FormData(form);
-      const counselorName = formData.get('counselor') || $('#selected-counselor-name')?.textContent || 'General Inquiry';
-      const senderName = formData.get('fullName') || formData.get('name') || 'Inquirer';
+      const counselorName = formData.get('counselor') || $('#selected-counselor-name')?.textContent || 'General Ministry';
+      const senderName = formData.get('fullName') || formData.get('name') || 
+        (formData.get('firstName') ? `${formData.get('firstName')} ${formData.get('lastName') || ''}`.trim() : 'Website Visitor');
       const senderEmail = formData.get('email') || '';
+      
+      const formSubject = formData.get('subject') || formData.get('_subject') || (
+        formType === 'counselor_booking' ? `[CORM Consultation] Request for ${counselorName} - from ${senderName}` :
+        formType === 'testimony' ? `[CORM Testimony] Shared Story from ${senderName}` :
+        formType === 'partnership' ? `[CORM Partnership] Activation from ${senderName}` :
+        `[CORM Website] New Message from ${senderName}`
+      );
+
+      const accessKey = formData.get('access_key');
+      const hasRealAccessKey = accessKey && accessKey !== 'YOUR_ACCESS_KEY_HERE' && accessKey.trim().length > 6;
 
       const payload = {
-        _subject: formType === 'counselor_booking'
-          ? `[CORM Consultation] Request for ${counselorName} - from ${senderName}`
-          : formType === 'testimony'
-          ? `[CORM Testimony] Shared Story from ${senderName}`
-          : `[CORM Inquiry] ${formData.get('subject') || 'Contact Message'} - from ${senderName}`,
+        access_key: accessKey || 'YOUR_ACCESS_KEY_HERE',
+        subject: formSubject,
+        _subject: formSubject,
         _replyto: senderEmail,
+        replyto: senderEmail,
+        _to: TARGET_EMAIL,
         target_inbox: TARGET_EMAIL,
         counselor_requested: counselorName,
         submitted_at: new Date().toISOString()
@@ -478,8 +491,11 @@
         payload[key] = value;
       });
 
+      // Use Web3Forms if valid key configured, otherwise use zero-config FormSubmit endpoint
+      const primaryUrl = hasRealAccessKey ? 'https://api.web3forms.com/submit' : FORMSUBMIT_URL;
+
       try {
-        const response = await fetch(FORMSUBMIT_URL, {
+        const response = await fetch(primaryUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -488,40 +504,59 @@
           body: JSON.stringify(payload)
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
 
-        if (response.ok && (data.success === 'true' || data.success === true || data.message)) {
+        if (response.ok && (data.success === 'true' || data.success === true || data.message || response.status === 200)) {
           showStatus(
             form,
             'success',
-            '✓ <strong>Your request has been received!</strong> Your details were sent to <strong>' +
+            '✓ <strong>Your message has been sent successfully!</strong> Your details have been routed directly to <strong>' +
             TARGET_EMAIL +
             '</strong>' + (formType === 'counselor_booking' ? ` regarding <strong>${counselorName}</strong>.` : '.') +
-            ' Our team will follow up with you shortly.'
+            ' The CORM team will follow up with you promptly.'
           );
           form.reset();
         } else {
-          throw new Error(data.message || 'Server error occurred');
+          // If primary failed (e.g. unverified key), try FormSubmit fallback directly
+          if (hasRealAccessKey) {
+            console.warn('Web3Forms returned non-200, trying FormSubmit fallback...');
+            const fallbackRes = await fetch(FORMSUBMIT_URL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              body: JSON.stringify(payload)
+            });
+            const fallbackData = await fallbackRes.json().catch(() => ({}));
+            if (fallbackRes.ok && (fallbackData.success === 'true' || fallbackData.success === true || fallbackData.message)) {
+              showStatus(
+                form,
+                'success',
+                '✓ <strong>Your message has been sent successfully!</strong> Your details have been routed directly to <strong>' +
+                TARGET_EMAIL +
+                '</strong>. The CORM team will follow up with you promptly.'
+              );
+              form.reset();
+              return;
+            }
+          }
+          throw new Error(data.message || 'Submission failed');
         }
       } catch (err) {
-        console.warn('Fallback to native mail client:', err);
-
-        let mailBody = 'CORM Consultation Request:\n\n';
-        for (const [key, val] of Object.entries(payload)) {
-          if (!key.startsWith('_')) {
-            mailBody += `${key}: ${val}\n`;
-          }
+        console.warn('AJAX submit issue, submitting via native POST fallback:', err);
+        // Fallback: Post natively without JS to guarantee message arrival
+        try {
+          form.action = 'https://formsubmit.co/' + TARGET_EMAIL;
+          form.method = 'POST';
+          form.submit();
+        } catch (submitErr) {
+          showStatus(
+            form,
+            'error',
+            '⚠️ Please email directly to <strong>' + TARGET_EMAIL + '</strong>. Our team is ready to assist you.'
+          );
         }
-
-        mailtoFallback(payload._subject, mailBody);
-
-        showStatus(
-          form,
-          'success',
-          '✓ Your email app has been opened with your request addressed to <strong>' +
-          TARGET_EMAIL +
-          '</strong>. Please send the email to complete your request.'
-        );
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;

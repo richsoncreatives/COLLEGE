@@ -46,7 +46,16 @@
     <button type="button" id="change-counselor-btn" class="pill-change-btn">Change</button>
   </div>
 
-  <form id="counselor-booking-form" class="corm-booking-form simplified-form">
+  <form action="https://api.web3forms.com/submit" method="POST" id="counselor-booking-form" class="corm-booking-form simplified-form">
+    <!-- Static Form Handler Configuration (Web3Forms / FormSubmit / Formspree) -->
+    <input type="hidden" name="access_key" value="YOUR_ACCESS_KEY_HERE" />
+    <input type="hidden" name="subject" value="New Consultation Booking Request from CORM Website" />
+    <input type="hidden" name="_subject" value="New Consultation Booking Request from CORM Website" />
+    <input type="hidden" name="target_email" value="collegeofrelationship@gmail.com" />
+    <input type="hidden" name="_to" value="collegeofrelationship@gmail.com" />
+    <input type="hidden" name="_captcha" value="false" />
+    <input type="hidden" name="_template" value="table" />
+    <input type="hidden" name="from_name" value="CORM Consultation Booking Form" />
     <div class="booking-field" id="counselor-select-wrapper" style="display:none;margin-bottom:14px;">
       <label for="booking-counselor">Select Counselor</label>
       <select id="booking-counselor" name="counselor">

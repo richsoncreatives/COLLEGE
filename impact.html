@@ -394,7 +394,16 @@
         Your journey can be the very breakthrough another couple needs. Submissions are sent securely to <strong>collegeofrelationship@gmail.com</strong>.
       </p>
 
-      <form id="testimony-form" class="corm-booking-form simplified-form" style="margin-top:16px;">
+      <form action="https://api.web3forms.com/submit" method="POST" id="testimony-form" class="corm-booking-form simplified-form" style="margin-top:16px;">
+        <!-- Static Form Handler Configuration (Web3Forms / FormSubmit / Formspree) -->
+        <input type="hidden" name="access_key" value="YOUR_ACCESS_KEY_HERE" />
+        <input type="hidden" name="subject" value="New Testimony Submission from CORM Website" />
+        <input type="hidden" name="_subject" value="New Testimony Submission from CORM Website" />
+        <input type="hidden" name="target_email" value="collegeofrelationship@gmail.com" />
+        <input type="hidden" name="_to" value="collegeofrelationship@gmail.com" />
+        <input type="hidden" name="_captcha" value="false" />
+        <input type="hidden" name="_template" value="table" />
+        <input type="hidden" name="from_name" value="CORM Testimony Submission Form" />
         <div class="booking-field" style="margin-bottom:14px;">
           <label for="testimony-name">Your Full Name or Initials</label>
           <input type="text" id="testimony-name" name="name" placeholder="e.g. Kwame &amp; Akua O." required />
