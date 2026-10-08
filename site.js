@@ -472,54 +472,61 @@
         `[CORM Website] New Message from ${senderName}`
       );
 
+      // Build prepared mailto link for direct fallback
+      let mailBody = `Hello CORM Team,
+
+Here are the details from my website submission:
+
+`;
+      formData.forEach((val, key) => {
+        if (!key.startsWith('_') && key !== 'access_key' && key !== 'target_email' && key !== 'from_name') {
+          mailBody += `${key}: ${val}
+`;
+        }
+      });
+      mailBody += `
+Submitted via https://cormgh.org on ${new Date().toLocaleString()}`;
+      const mailtoUrl = `mailto:${encodeURIComponent(TARGET_EMAIL)}?subject=${encodeURIComponent(formSubject)}&body=${encodeURIComponent(mailBody)}`;
+
       const accessKey = formData.get('access_key');
       const hasRealAccessKey = accessKey && accessKey !== 'YOUR_ACCESS_KEY_HERE' && accessKey.trim().length > 6;
 
-      const payload = {
-        access_key: accessKey || 'YOUR_ACCESS_KEY_HERE',
-        subject: formSubject,
-        _subject: formSubject,
-        _replyto: senderEmail,
-        replyto: senderEmail,
-        _to: TARGET_EMAIL,
-        target_inbox: TARGET_EMAIL,
-        counselor_requested: counselorName,
-        submitted_at: new Date().toISOString()
-      };
+      formData.set('_subject', formSubject);
+      formData.set('subject', formSubject);
+      formData.set('_replyto', senderEmail);
+      formData.set('_url', window.location.href);
+      formData.set('page_source', window.location.href);
+      formData.set('_next', window.location.origin + window.location.pathname + '?submitted=true');
 
-      formData.forEach((value, key) => {
-        payload[key] = value;
-      });
-
-      // Target endpoint
       const primaryUrl = hasRealAccessKey ? 'https://api.web3forms.com/submit' : FORMSUBMIT_URL;
 
       try {
         const response = await fetch(primaryUrl, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify(payload)
+          body: formData
         });
 
         const data = await response.json().catch(() => ({}));
         const msgStr = (data.message || '').toString();
 
-        // Check if FormSubmit requires one-time inbox activation
+        // 1. One-time FormSubmit activation notice
         if (msgStr.toLowerCase().includes('activation') || msgStr.toLowerCase().includes('activate')) {
           showStatus(
             form,
             'warning',
-            '⚠️ <strong>One-Time Activation Required:</strong> FormSubmit sent an activation email to <strong>' + TARGET_EMAIL + '</strong>.<br/><br/>' +
-            '<strong>Action Needed:</strong> Please open <strong>' + TARGET_EMAIL + '</strong> (check both your <strong>Inbox</strong> and <strong>Spam/Junk</strong> folder) and click the <strong>"Activate Form"</strong> button.<br/>' +
-            '<em>Once activated, this form and all future submissions will arrive immediately in your email!</em>'
+            '⚠️ <strong>Form Activation Notice:</strong> FormSubmit has sent a confirmation email to <strong>' + TARGET_EMAIL + '</strong>.<br/><br/>' +
+            '<strong>Important:</strong> FormSubmit creates a fresh link on each test. Please open <strong>' + TARGET_EMAIL + '</strong> and click the link in the <strong>MOST RECENT email</strong> (older emails will show "Token not found").<br/><br/>' +
+            '<em>In the meantime, you can also send this message directly via your email app:</em><br/>' +
+            '<a href="' + mailtoUrl + '" class="button button-red" style="display:inline-flex;align-items:center;gap:8px;margin-top:10px;padding:8px 16px;font-size:13px;text-decoration:none;">' +
+            '<span>✉️ Send Directly via Email App</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg></a>'
           );
           return;
         }
 
-        // Real delivery confirmation
+        // 2. Real success validation
         const isSuccess = response.ok && (data.success === 'true' || data.success === true);
 
         if (isSuccess) {
@@ -533,54 +540,23 @@
           );
           form.reset();
         } else {
-          // If Web3Forms failed, try FormSubmit fallback
-          if (hasRealAccessKey) {
-            console.warn('Web3Forms returned non-200, trying FormSubmit fallback...');
-            const fallbackRes = await fetch(FORMSUBMIT_URL, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-              },
-              body: JSON.stringify(payload)
-            });
-            const fallbackData = await fallbackRes.json().catch(() => ({}));
-            const fallbackMsg = (fallbackData.message || '').toString();
-
-            if (fallbackMsg.toLowerCase().includes('activation') || fallbackMsg.toLowerCase().includes('activate')) {
-              showStatus(
-                form,
-                'warning',
-                '⚠️ <strong>One-Time Activation Required:</strong> FormSubmit sent an activation email to <strong>' + TARGET_EMAIL + '</strong>. Please check your inbox (or Spam/Junk) and click <strong>"Activate Form"</strong>.'
-              );
-              return;
-            }
-
-            if (fallbackRes.ok && (fallbackData.success === 'true' || fallbackData.success === true)) {
-              showStatus(
-                form,
-                'success',
-                '✓ <strong>Message Delivered!</strong> Your details were sent to <strong>' +
-                TARGET_EMAIL +
-                '</strong>.'
-              );
-              form.reset();
-              return;
-            }
-          }
-
+          // Fallback option
           showStatus(
             form,
             'error',
-            '⚠️ ' + (data.message || 'Could not send message automatically.') + ' You can also email directly to <a href="mailto:' + TARGET_EMAIL + '" style="color:#c00000;text-decoration:underline;font-weight:700;">' + TARGET_EMAIL + '</a>.'
+            '⚠️ Submission could not be completed automatically.<br/><br/>' +
+            '<a href="' + mailtoUrl + '" class="button button-red" style="display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:8px 16px;font-size:13px;text-decoration:none;">' +
+            '<span>✉️ Send Directly via Email App</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg></a>'
           );
         }
       } catch (err) {
-        console.warn('Network issue during submit:', err);
+        console.warn('Network issue, offering email app fallback:', err);
         showStatus(
           form,
           'error',
-          '⚠️ Connection issue. Please email directly to <a href="mailto:' + TARGET_EMAIL + '" style="color:#c00000;text-decoration:underline;font-weight:700;">' + TARGET_EMAIL + '</a>.'
+          '⚠️ Connection error. Click below to send directly via your email app:<br/><br/>' +
+          '<a href="' + mailtoUrl + '" class="button button-red" style="display:inline-flex;align-items:center;gap:8px;margin-top:8px;padding:8px 16px;font-size:13px;text-decoration:none;">' +
+          '<span>✉️ Send Directly via Email App</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></svg></a>'
         );
       } finally {
         if (submitBtn) {
