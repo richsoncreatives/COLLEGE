@@ -1701,3 +1701,11 @@ select:focus-visible {
   background: #c00000;
   color: #ffffff;
 }
+
+.form-status-msg.warning {
+  background: #fffbeb !important;
+  border: 1px solid #fde68a !important;
+  color: #92400e !important;
+  display: block !important;
+  line-height: 1.6 !important;
+}

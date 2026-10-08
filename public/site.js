@@ -466,7 +466,7 @@
       const senderEmail = formData.get('email') || '';
       
       const formSubject = formData.get('subject') || formData.get('_subject') || (
-        formType === 'counselor_booking' ? `[CORM Consultation] Request for ${counselorName} - from ${senderName}` :
+        formType === 'counselor_booking' ? `[CORM Consultation] Booking for ${counselorName} - from ${senderName}` :
         formType === 'testimony' ? `[CORM Testimony] Shared Story from ${senderName}` :
         formType === 'partnership' ? `[CORM Partnership] Activation from ${senderName}` :
         `[CORM Website] New Message from ${senderName}`
@@ -491,7 +491,7 @@
         payload[key] = value;
       });
 
-      // Use Web3Forms if valid key configured, otherwise use zero-config FormSubmit endpoint
+      // Target endpoint
       const primaryUrl = hasRealAccessKey ? 'https://api.web3forms.com/submit' : FORMSUBMIT_URL;
 
       try {
@@ -505,19 +505,35 @@
         });
 
         const data = await response.json().catch(() => ({}));
+        const msgStr = (data.message || '').toString();
 
-        if (response.ok && (data.success === 'true' || data.success === true || data.message || response.status === 200)) {
+        // Check if FormSubmit requires one-time inbox activation
+        if (msgStr.toLowerCase().includes('activation') || msgStr.toLowerCase().includes('activate')) {
+          showStatus(
+            form,
+            'warning',
+            '⚠️ <strong>One-Time Activation Required:</strong> FormSubmit sent an activation email to <strong>' + TARGET_EMAIL + '</strong>.<br/><br/>' +
+            '<strong>Action Needed:</strong> Please open <strong>' + TARGET_EMAIL + '</strong> (check both your <strong>Inbox</strong> and <strong>Spam/Junk</strong> folder) and click the <strong>"Activate Form"</strong> button.<br/>' +
+            '<em>Once activated, this form and all future submissions will arrive immediately in your email!</em>'
+          );
+          return;
+        }
+
+        // Real delivery confirmation
+        const isSuccess = response.ok && (data.success === 'true' || data.success === true);
+
+        if (isSuccess) {
           showStatus(
             form,
             'success',
-            '✓ <strong>Your message has been sent successfully!</strong> Your details have been routed directly to <strong>' +
+            '✓ <strong>Message Delivered!</strong> Your submission was routed directly to <strong>' +
             TARGET_EMAIL +
             '</strong>' + (formType === 'counselor_booking' ? ` regarding <strong>${counselorName}</strong>.` : '.') +
             ' The CORM team will follow up with you promptly.'
           );
           form.reset();
         } else {
-          // If primary failed (e.g. unverified key), try FormSubmit fallback directly
+          // If Web3Forms failed, try FormSubmit fallback
           if (hasRealAccessKey) {
             console.warn('Web3Forms returned non-200, trying FormSubmit fallback...');
             const fallbackRes = await fetch(FORMSUBMIT_URL, {
@@ -529,34 +545,43 @@
               body: JSON.stringify(payload)
             });
             const fallbackData = await fallbackRes.json().catch(() => ({}));
-            if (fallbackRes.ok && (fallbackData.success === 'true' || fallbackData.success === true || fallbackData.message)) {
+            const fallbackMsg = (fallbackData.message || '').toString();
+
+            if (fallbackMsg.toLowerCase().includes('activation') || fallbackMsg.toLowerCase().includes('activate')) {
+              showStatus(
+                form,
+                'warning',
+                '⚠️ <strong>One-Time Activation Required:</strong> FormSubmit sent an activation email to <strong>' + TARGET_EMAIL + '</strong>. Please check your inbox (or Spam/Junk) and click <strong>"Activate Form"</strong>.'
+              );
+              return;
+            }
+
+            if (fallbackRes.ok && (fallbackData.success === 'true' || fallbackData.success === true)) {
               showStatus(
                 form,
                 'success',
-                '✓ <strong>Your message has been sent successfully!</strong> Your details have been routed directly to <strong>' +
+                '✓ <strong>Message Delivered!</strong> Your details were sent to <strong>' +
                 TARGET_EMAIL +
-                '</strong>. The CORM team will follow up with you promptly.'
+                '</strong>.'
               );
               form.reset();
               return;
             }
           }
-          throw new Error(data.message || 'Submission failed');
-        }
-      } catch (err) {
-        console.warn('AJAX submit issue, submitting via native POST fallback:', err);
-        // Fallback: Post natively without JS to guarantee message arrival
-        try {
-          form.action = 'https://formsubmit.co/' + TARGET_EMAIL;
-          form.method = 'POST';
-          form.submit();
-        } catch (submitErr) {
+
           showStatus(
             form,
             'error',
-            '⚠️ Please email directly to <strong>' + TARGET_EMAIL + '</strong>. Our team is ready to assist you.'
+            '⚠️ ' + (data.message || 'Could not send message automatically.') + ' You can also email directly to <a href="mailto:' + TARGET_EMAIL + '" style="color:#c00000;text-decoration:underline;font-weight:700;">' + TARGET_EMAIL + '</a>.'
           );
         }
+      } catch (err) {
+        console.warn('Network issue during submit:', err);
+        showStatus(
+          form,
+          'error',
+          '⚠️ Connection issue. Please email directly to <a href="mailto:' + TARGET_EMAIL + '" style="color:#c00000;text-decoration:underline;font-weight:700;">' + TARGET_EMAIL + '</a>.'
+        );
       } finally {
         if (submitBtn) {
           submitBtn.disabled = false;
